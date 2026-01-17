@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PostMessage Target (Perfetto-like)</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 20px; background: #f0f9ff; color: #1e3a5f; }
+        h2 { color: #0369a1; margin-top: 0; }
+        .log { background: #fff; border: 1px solid #ccc; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+        .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; display: inline-block; margin: 2px; }
+        .ok { background: #bbf7d0; color: #166534; }
+        .err { background: #fecaca; color: #991b1b; }
+        .info { background: #dbeafe; color: #1e40af; }
+        button { background: #0369a1; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin: 5px 5px 5px 0; }
+    </style>
+</head>
+<body>
+    <h2>🎯 PostMessage Target</h2>
+    <div id="context">
+        <span class="status info" id="ctx-source">Source: ?</span>
+        <span class="status info" id="ctx-mode">Mode: ?</span>
+    </div>
+    <br>
+    <div id="status"></div>
+    <h3>Event Log</h3>
+    <button onclick="clearLog()">Clear</button>
+    <button onclick="sendPingToOpener()">Send PING to opener</button>
+    <div class="log" id="log">Initializing...</div>
+
+    <script>
+        const params = new URLSearchParams(location.search);
+        const isOpenee = params.get('openee') === '1';
+        
+        function log(msg, type = 'info') {
+            const el = document.getElementById('log');
+            const ts = new Date().toISOString().substr(11, 12);
+            el.textContent = ts + ' [' + type + '] ' + msg + '\n' + el.textContent;
+        }
+
+        function clearLog() { document.getElementById('log').textContent = ''; }
+
+        function addStatus(msg, ok) {
+            const el = document.getElementById('status');
+            const span = document.createElement('span');
+            span.className = 'status ' + (ok ? 'ok' : 'err');
+            span.textContent = msg;
+            el.appendChild(span);
+        }
+
+        // Detect context
+        const fromOpener = window.opener !== null;
+        const fromIframeHost = window.parent !== window;
+        document.getElementById('ctx-source').textContent = 
+            fromOpener ? 'Source: opener (popup)' : 
+            fromIframeHost ? 'Source: parent (iframe)' : 'Source: none';
+        document.getElementById('ctx-mode').textContent = isOpenee ? 'Mode: openee' : 'Mode: normal';
+
+        log('Context: opener=' + fromOpener + ', inIframe=' + fromIframeHost + ', isOpenee=' + isOpenee);
+
+        // Perfetto's trusted origins logic
+        function isTrustedOrigin(origin) {
+            const TRUSTED_ORIGINS = [
+                'https://chrometto.googleplex.com',
+                'https://uma.googleplex.com',
+                'https://android-build.googleplex.com',
+            ];
+            if (origin === window.origin) return { trusted: true, reason: 'same-origin' };
+            if (origin === 'null') return { trusted: false, reason: 'null origin' };
+            if (TRUSTED_ORIGINS.includes(origin)) return { trusted: true, reason: 'allowlist' };
+            
+            try {
+                const hostname = new URL(origin).hostname;
+                if (hostname.endsWith('.corp.google.com')) return { trusted: true, reason: '*.corp.google.com' };
+                if (hostname.endsWith('.c.googlers.com')) return { trusted: true, reason: '*.c.googlers.com' };
+                if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') {
+                    return { trusted: true, reason: 'localhost' };
+                }
+            } catch (e) {
+                return { trusted: false, reason: 'invalid URL' };
+            }
+            return { trusted: false, reason: 'unknown origin' };
+        }
+
+        // Perfetto-like postMessage handler
+        function postMessageHandler(e) {
+            log('Received message from ' + e.origin);
+            
+            // Check origin trust
+            const trust = isTrustedOrigin(e.origin);
+            log('Origin trust: ' + (trust.trusted ? 'TRUSTED' : 'UNTRUSTED') + ' (' + trust.reason + ')');
+            addStatus(trust.trusted ? 'Trusted: ' + trust.reason : 'Untrusted', trust.trusted);
+            
+            // Check source
+            const fromOpener = e.source === window.opener;
+            const fromIframeHost = e.source === window.parent;
+            const fromOpenee = e.source && e.source.opener === window;
+
+            if (e.source === null || !(fromOpener || fromIframeHost || fromOpenee)) {
+                log('Ignoring: source is not opener/parent/openee', 'warn');
+                addStatus('Bad source', false);
+                return;
+            }
+
+            log('Source check passed: opener=' + fromOpener + ', parent=' + fromIframeHost + ', openee=' + fromOpenee);
+            addStatus('Source OK', true);
+
+            // PING/PONG
+            if (e.data === 'PING') {
+                log('Got PING, sending PONG');
+                e.source.postMessage('PONG', '*');
+                addStatus('PING/PONG', true);
+                return;
+            }
+
+            // ScrollToRange
+            if (isScrollToRange(e.data)) {
+                log('Got ScrollToRange: ' + JSON.stringify(e.data.perfetto));
+                addStatus('ScrollToRange', true);
+                return;
+            }
+
+            // Trace
+            if (isWrappedTrace(e.data)) {
+                log('Got wrapped trace: title="' + e.data.perfetto.title + '", size=' + e.data.perfetto.buffer.byteLength);
+                addStatus('Trace (wrapped)', true);
+                return;
+            }
+
+            if (e.data instanceof ArrayBuffer) {
+                log('Got raw ArrayBuffer trace, size=' + e.data.byteLength);
+                addStatus('Trace (raw)', true);
+                return;
+            }
+
+            log('Unknown message type: ' + JSON.stringify(e.data), 'warn');
+            addStatus('Unknown msg', false);
+        }
+
+        function isScrollToRange(obj) {
+            return obj && obj.perfetto && (obj.perfetto.timeStart !== undefined || obj.perfetto.timeEnd !== undefined);
+        }
+
+        function isWrappedTrace(obj) {
+            return obj && obj.perfetto && obj.perfetto.buffer !== undefined && obj.perfetto.title !== undefined;
+        }
+
+        window.addEventListener('message', postMessageHandler);
+        log('Message handler registered');
+
+        // If openee mode, send trace back to opener after a delay
+        if (isOpenee && window.opener) {
+            log('Openee mode: will send trace to opener in 1s');
+            setTimeout(() => {
+                const buffer = new ArrayBuffer(32);
+                const msg = { perfetto: { title: 'Trace from openee', buffer: buffer } };
+                log('Sending trace to opener...');
+                window.opener.postMessage(msg, '*', [buffer]);
+                addStatus('Sent to opener', true);
+            }, 1000);
+        }
+
+        function sendPingToOpener() {
+            if (window.opener) {
+                window.opener.postMessage('PING', '*');
+                log('Sent PING to opener');
+            } else {
+                log('No opener', 'warn');
+            }
+        }
+    </script>
+</body>
+</html>
