@@ -224,9 +224,12 @@
         <button onclick="testCrossOriginCoopIframe('', '', {credentialless: true})">No headers + credentialless iframe</button>
         
         <p style="color:#fbbf24; margin-top:15px;">Method 3: Document-Isolation-Policy (Chrome only, designed for iframes)</p>
-        <button onclick="testCrossOriginCoopIframe('', '', {dip: 'isolate-and-require-corp'})">DIP: isolate-and-require-corp</button>
-        <button onclick="testCrossOriginCoopIframe('', '', {dip: 'isolate-and-credentialless'})">DIP: isolate-and-credentialless</button>
+        <button onclick="testCrossOriginCoopIframe('', '', {dip: 'isolate-and-require-corp'})">DIP only</button>
         <button onclick="testCrossOriginCoopIframe('', 'require-corp', {dip: 'isolate-and-require-corp'})">COEP + DIP</button>
+        <button onclick="testCrossOriginCoopIframe('same-origin', 'require-corp', {dip: 'isolate-and-require-corp'})">COOP + COEP + DIP (all three)</button>
+        
+        <p style="color:#fbbf24; margin-top:15px;">Method 4: Combinations with credentialless iframe</p>
+        <button onclick="testCrossOriginCoopIframe('same-origin', 'require-corp', {dip: 'isolate-and-require-corp', credentialless: true})">All headers + credentialless</button>
         <div id="cross-origin-coop-iframe-container"></div>
         <div class="test-result" id="cross-origin-coop-iframe-result">Results will appear here...
 
