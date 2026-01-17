@@ -1,0 +1,14 @@
+[Unit]
+Description=COOP/COEP Tester Web Service
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/coop-coep-tester
+ExecStart=/home/exedev/coop-coep-tester/server -port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
