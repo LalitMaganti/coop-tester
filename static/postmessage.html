@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PostMessage Tester</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #1a1a2e; color: #eee; }
+        h1 { color: #00d9ff; }
+        h2 { color: #ff6b6b; margin-top: 30px; }
+        .card { background: #16213e; border-radius: 8px; padding: 20px; margin: 15px 0; }
+        button { background: #4f46e5; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin: 5px; }
+        button:hover { background: #4338ca; }
+        .log { background: #0f172a; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+        select, input[type="text"] { background: #0f172a; color: #eee; border: 1px solid #333; padding: 8px; border-radius: 4px; width: 100%; max-width: 400px; }
+        label { display: block; margin: 10px 0 5px; color: #888; }
+        .status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .status.ok { background: #166534; }
+        .status.err { background: #991b1b; }
+        iframe { width: 100%; height: 200px; border: 2px solid #333; border-radius: 4px; background: #fff; }
+    </style>
+</head>
+<body>
+    <h1>📨 PostMessage Handler Tester</h1>
+    <p style="color:#888;">Test postMessage flows like Perfetto's embed API</p>
+
+    <h2>Test Mode</h2>
+    <div class="card">
+        <label>Open Target As</label>
+        <select id="mode">
+            <option value="iframe">iframe (embedded)</option>
+            <option value="popup">window.open (popup)</option>
+            <option value="openee">openee flow (B→A pattern)</option>
+        </select>
+        <label>Target URL</label>
+        <input type="text" id="target-url" value="/postmessage-target.html">
+        <br><br>
+        <button onclick="openTarget()">Open Target</button>
+        <button onclick="closeTarget()">Close Target</button>
+    </div>
+
+    <div id="target-container" class="card" style="display:none;"></div>
+
+    <h2>PING/PONG Test</h2>
+    <div class="card">
+        <p>Send PING, expect PONG reply</p>
+        <button onclick="sendPing()">Send PING</button>
+        <div class="log" id="ping-log">Ready...</div>
+    </div>
+
+    <h2>Send Trace Buffer</h2>
+    <div class="card">
+        <label>Trace Format</label>
+        <select id="trace-format">
+            <option value="wrapped">Wrapped: {perfetto: {title, buffer}}</option>
+            <option value="raw">Raw ArrayBuffer</option>
+        </select>
+        <label>Title (for wrapped)</label>
+        <input type="text" id="trace-title" value="Test Trace">
+        <br><br>
+        <button onclick="sendTrace()">Send Trace</button>
+        <div class="log" id="trace-log">Ready...</div>
+    </div>
+
+    <h2>Send ScrollToRange</h2>
+    <div class="card">
+        <label>Time Start (seconds)</label>
+        <input type="text" id="time-start" value="1.0">
+        <label>Time End (seconds)</label>
+        <input type="text" id="time-end" value="2.0">
+        <br><br>
+        <button onclick="sendScrollToRange()">Send ScrollToRange</button>
+        <div class="log" id="scroll-log">Ready...</div>
+    </div>
+
+    <h2>Message Log</h2>
+    <div class="card">
+        <button onclick="clearLog()">Clear</button>
+        <div class="log" id="message-log">Listening for messages...</div>
+    </div>
+
+    <script>
+        let targetWindow = null;
+        let targetIframe = null;
+
+        function log(id, msg) {
+            const el = document.getElementById(id);
+            el.textContent = new Date().toISOString().substr(11, 12) + ' ' + msg + '\n' + el.textContent;
+        }
+
+        function openTarget() {
+            closeTarget();
+            const mode = document.getElementById('mode').value;
+            const url = document.getElementById('target-url').value;
+            const container = document.getElementById('target-container');
+            container.style.display = 'block';
+
+            if (mode === 'iframe') {
+                container.innerHTML = '<p>Iframe target:</p>';
+                targetIframe = document.createElement('iframe');
+                targetIframe.src = url;
+                container.appendChild(targetIframe);
+                targetWindow = null;
+                log('message-log', 'Opened iframe: ' + url);
+            } else if (mode === 'popup') {
+                targetWindow = window.open(url, 'postmessage-target', 'width=600,height=400');
+                targetIframe = null;
+                container.innerHTML = '<p>Popup window opened. Target: ' + url + '</p>';
+                log('message-log', 'Opened popup: ' + url);
+            } else if (mode === 'openee') {
+                // Simulate the openee flow: we open a window that will send back to us
+                targetWindow = window.open(url + '?openee=1', 'postmessage-target', 'width=600,height=400');
+                targetIframe = null;
+                container.innerHTML = '<p>Openee window opened (will send trace back to us). Target: ' + url + '</p>';
+                log('message-log', 'Opened openee window: ' + url);
+            }
+        }
+
+        function closeTarget() {
+            if (targetWindow) { targetWindow.close(); targetWindow = null; }
+            if (targetIframe) { targetIframe.remove(); targetIframe = null; }
+            document.getElementById('target-container').style.display = 'none';
+        }
+
+        function getTarget() {
+            if (targetIframe) return targetIframe.contentWindow;
+            if (targetWindow) return targetWindow;
+            return null;
+        }
+
+        function sendPing() {
+            const target = getTarget();
+            if (!target) { log('ping-log', 'ERROR: No target open'); return; }
+            log('ping-log', 'Sending PING...');
+            target.postMessage('PING', '*');
+        }
+
+        function sendTrace() {
+            const target = getTarget();
+            if (!target) { log('trace-log', 'ERROR: No target open'); return; }
+            const format = document.getElementById('trace-format').value;
+            const title = document.getElementById('trace-title').value;
+            
+            // Create a small test buffer
+            const buffer = new ArrayBuffer(64);
+            const view = new Uint8Array(buffer);
+            for (let i = 0; i < 64; i++) view[i] = i;
+
+            if (format === 'wrapped') {
+                const msg = { perfetto: { title: title, buffer: buffer } };
+                log('trace-log', 'Sending wrapped trace: ' + JSON.stringify({perfetto: {title, bufferSize: buffer.byteLength}}));
+                target.postMessage(msg, '*', [buffer]);
+            } else {
+                log('trace-log', 'Sending raw ArrayBuffer, size: ' + buffer.byteLength);
+                target.postMessage(buffer, '*', [buffer]);
+            }
+        }
+
+        function sendScrollToRange() {
+            const target = getTarget();
+            if (!target) { log('scroll-log', 'ERROR: No target open'); return; }
+            const msg = {
+                perfetto: {
+                    timeStart: parseFloat(document.getElementById('time-start').value),
+                    timeEnd: parseFloat(document.getElementById('time-end').value)
+                }
+            };
+            log('scroll-log', 'Sending ScrollToRange: ' + JSON.stringify(msg));
+            target.postMessage(msg, '*');
+        }
+
+        function clearLog() {
+            document.getElementById('message-log').textContent = '';
+        }
+
+        // Listen for messages from target
+        window.addEventListener('message', (e) => {
+            let data = e.data;
+            if (typeof data === 'object' && !(data instanceof ArrayBuffer)) {
+                data = JSON.stringify(data);
+            }
+            log('message-log', 'RECV from ' + e.origin + ': ' + data);
+            
+            if (e.data === 'PONG') {
+                log('ping-log', 'Got PONG! Target is ready.');
+            }
+        });
+    </script>
+</body>
+</html>
