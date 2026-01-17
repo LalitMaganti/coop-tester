@@ -24,12 +24,40 @@
     <h1>📨 PostMessage Handler Tester</h1>
     <p style="color:#888;">Test cross-origin postMessage flows like Perfetto's embed API</p>
 
-    <div class="card" style="border-left: 4px solid #f59e0b;">
-        <strong style="color:#f59e0b;">⚠️ Cross-Origin Setup Required</strong>
-        <p style="color:#888;font-size:13px;margin:10px 0 0;">To test cross-origin messaging, you need two different origins. Use the alt-origin field below to specify a different exe.dev instance or port.</p>
+    <h2>This Page's Headers</h2>
+    <div class="card">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;">
+            <div>
+                <label>COOP</label>
+                <select id="this-coop">
+                    <option value="">None</option>
+                    <option value="same-origin">same-origin</option>
+                    <option value="same-origin-allow-popups">same-origin-allow-popups</option>
+                </select>
+            </div>
+            <div>
+                <label>COEP</label>
+                <select id="this-coep">
+                    <option value="">None</option>
+                    <option value="require-corp">require-corp</option>
+                    <option value="credentialless">credentialless</option>
+                </select>
+            </div>
+            <div>
+                <label>DIP</label>
+                <select id="this-dip">
+                    <option value="">None</option>
+                    <option value="isolate-and-require-corp">isolate-and-require-corp</option>
+                    <option value="isolate-and-credentialless">isolate-and-credentialless</option>
+                </select>
+            </div>
+        </div>
+        <br>
+        <button onclick="applyThisHeaders()">Apply & Reload</button>
+        <span id="this-isolation" style="margin-left:15px;"></span>
     </div>
 
-    <h2>Test Mode</h2>
+    <h2>Target Setup</h2>
     <div class="card">
         <label>This Page's Origin</label>
         <div style="background:#0f172a;padding:8px;border-radius:4px;font-family:monospace;" id="this-origin"></div>
@@ -46,6 +74,34 @@
         </select>
         <label>Target Path</label>
         <input type="text" id="target-url" value="/postmessage-target.html">
+        
+        <label>Target Headers</label>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;">
+            <div>
+                <div style="color:#666;font-size:12px;">COOP</div>
+                <select id="target-coop">
+                    <option value="">None</option>
+                    <option value="same-origin">same-origin</option>
+                    <option value="same-origin-allow-popups">same-origin-allow-popups</option>
+                </select>
+            </div>
+            <div>
+                <div style="color:#666;font-size:12px;">COEP</div>
+                <select id="target-coep">
+                    <option value="">None</option>
+                    <option value="require-corp">require-corp</option>
+                    <option value="credentialless">credentialless</option>
+                </select>
+            </div>
+            <div>
+                <div style="color:#666;font-size:12px;">CORP</div>
+                <select id="target-corp">
+                    <option value="cross-origin">cross-origin</option>
+                    <option value="">None</option>
+                    <option value="same-origin">same-origin</option>
+                </select>
+            </div>
+        </div>
         <br><br>
         <button onclick="openTarget()">Open Target</button>
         <button onclick="closeTarget()">Close Target</button>
@@ -95,8 +151,28 @@
         let targetWindow = null;
         let targetIframe = null;
 
-        // Show this origin
+        // Show this origin and isolation status
         document.getElementById('this-origin').textContent = window.origin;
+        document.getElementById('this-isolation').innerHTML = window.crossOriginIsolated 
+            ? '<span class="status ok">crossOriginIsolated: true</span>'
+            : '<span class="status err">crossOriginIsolated: false</span>';
+
+        // Restore header selects from URL
+        const urlParams = new URLSearchParams(location.search);
+        ['coop', 'coep', 'dip'].forEach(h => {
+            const v = urlParams.get(h);
+            const el = document.getElementById('this-' + h);
+            if (el && v) el.value = v;
+        });
+
+        function applyThisHeaders() {
+            const params = new URLSearchParams();
+            ['coop', 'coep', 'dip'].forEach(h => {
+                const v = document.getElementById('this-' + h).value;
+                if (v) params.set(h, v);
+            });
+            window.location.href = window.location.pathname + (params.toString() ? '?' + params : '');
+        }
 
         function log(id, msg) {
             const el = document.getElementById(id);
@@ -106,8 +182,19 @@
         function getFullTargetUrl(path, extraParams) {
             const targetOrigin = document.getElementById('target-origin').value.trim();
             const base = targetOrigin || window.origin;
+            
+            // Build header params for target
+            const headerParams = new URLSearchParams();
+            const coop = document.getElementById('target-coop').value;
+            const coep = document.getElementById('target-coep').value;
+            const corp = document.getElementById('target-corp').value;
+            if (coop) headerParams.set('coop', coop);
+            if (coep) headerParams.set('coep', coep);
+            if (corp) headerParams.set('corp', corp);
+            
             let url = base + path;
-            if (extraParams) url += (url.includes('?') ? '&' : '?') + extraParams;
+            const allParams = headerParams.toString() + (extraParams ? '&' + extraParams : '');
+            if (allParams) url += '?' + allParams;
             return url;
         }
 
