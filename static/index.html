@@ -191,6 +191,10 @@
         <button onclick="testIframe('same-origin', 'require-corp', 'cross-origin')">Full Isolation + CORP</button>
         <button onclick="testIframe('same-origin', 'require-corp', '')">Full Isolation (no CORP)</button>
         <button onclick="testIframe('', '', 'cross-origin')">CORP Only</button>
+        
+        <p style="color:#888; margin-top:10px;">Cross-origin (from port 8001):</p>
+        <button onclick="testIframeFromOrigin('https://plateau-snow.exe.xyz:8001', '', '', 'cross-origin')">From :8001 (no headers)</button>
+        <button onclick="testIframeFromOrigin('https://plateau-snow.exe.xyz:8001', 'same-origin', 'require-corp', 'cross-origin')">From :8001 (isolated + CORP)</button>
         <div id="iframe-container"></div>
         <div class="test-result" id="iframe-result">Results will appear here...</div>
     </div>
@@ -200,6 +204,8 @@
         <p>Test embedding external resources (may fail with COEP: require-corp):</p>
         <button onclick="testExternalIframe('https://example.com')">Embed example.com</button>
         <button onclick="testExternalIframe('https://www.wikipedia.org')">Embed wikipedia.org</button>
+        <button onclick="testExternalIframe('https://plateau-snow.exe.xyz:8000')">Embed plateau-snow:8000</button>
+        <button onclick="testExternalIframe('https://plateau-snow.exe.xyz:8001')">Embed plateau-snow:8001</button>
         <div id="external-iframe-container"></div>
         <div class="test-result" id="external-iframe-result">Results will appear here...</div>
     </div>
@@ -270,6 +276,10 @@ Note: Your parent page must also be isolated for some of these to work.</div>
         <button onclick="testCredentialIframe(true)">Embed (credentialless)</button>
         <button onclick="testCredentialIframe(false, 'anonymous')">Embed (crossorigin=anonymous)</button>
         <button onclick="testCredentialIframe(false, 'use-credentials')">Embed (crossorigin=use-credentials)</button>
+        
+        <p style="color:#888; margin-top:10px;">Quick test with plateau-snow:</p>
+        <button onclick="document.getElementById('credential-iframe-url').value='https://plateau-snow.exe.xyz:8000/coop-target.html?corp=cross-origin'; testCredentialIframe(false)">plateau-snow:8000 + credentials</button>
+        <button onclick="document.getElementById('credential-iframe-url').value='https://plateau-snow.exe.xyz:8001/coop-target.html?corp=cross-origin'; testCredentialIframe(false)">plateau-snow:8001 + credentials</button>
         <div id="credential-iframe-container"></div>
         <div class="test-result" id="credential-iframe-result">Results will appear here...
 
@@ -445,6 +455,36 @@ Document-Isolation-Policy: isolate-and-credentialless allows isolation without C
             } catch (e) {
                 resultEl.textContent = `✗ Failed!\nError: ${e.message}`;
             }
+        }
+
+        function testIframeFromOrigin(origin, coop, coep, corp) {
+            const container = document.getElementById('iframe-container');
+            const resultEl = document.getElementById('iframe-result');
+            
+            const params = new URLSearchParams();
+            if (coop) params.set('coop', coop);
+            if (coep) params.set('coep', coep);
+            if (corp) params.set('corp', corp);
+            
+            const url = origin + '/embed.html' + (params.toString() ? '?' + params.toString() : '');
+            
+            resultEl.textContent = `Loading iframe from DIFFERENT ORIGIN:\nURL: ${url}\nCOOP: ${coop || 'none'}\nCOEP: ${coep || 'none'}\nCORP: ${corp || 'none'}`;
+            
+            container.innerHTML = '';
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            iframe.style.width = '100%';
+            iframe.style.height = '200px';
+            iframe.style.border = '2px solid #f59e0b';
+            iframe.style.borderRadius = '4px';
+            iframe.style.background = '#fff';
+            iframe.onload = () => {
+                resultEl.textContent += '\n\n✓ Iframe loaded successfully!';
+            };
+            iframe.onerror = (e) => {
+                resultEl.textContent += `\n\n✗ Iframe failed to load: ${e}`;
+            };
+            container.appendChild(iframe);
         }
 
         function testIframe(coop, coep, corp) {
