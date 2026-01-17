@@ -214,6 +214,7 @@
                 container.innerHTML = '<p>Iframe target' + originLabel + ':</p>';
                 targetIframe = document.createElement('iframe');
                 targetIframe.src = url;
+                targetIframe.allow = 'cross-origin-isolated';
                 container.appendChild(targetIframe);
                 targetWindow = null;
                 log('message-log', 'Opened iframe: ' + url + originLabel);
