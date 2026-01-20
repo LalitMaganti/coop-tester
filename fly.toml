@@ -1,10 +1,10 @@
-# fly.toml app configuration file generated for cross-origin-tester on 2026-01-20T05:45:19Z
+# fly.toml app configuration file generated for cross-origin-tester-ext on 2026-01-20T06:03:43Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'cross-origin-tester'
-primary_region = 'ams'
+app = 'cross-origin-tester-ext'
+primary_region = 'iad'
 
 [build]
 
@@ -20,4 +20,4 @@ primary_region = 'ams'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
+  memory_mb = 1024
